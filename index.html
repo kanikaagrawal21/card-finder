@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Card Finder</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1c1c1c;--mute:#6b6b6b;--line:#e3e0da;--acc:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#151515;--card:#202020;--ink:#eee;--mute:#9a9a9a;--line:#333;--acc:#fb923c}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+.wrap{max-width:1100px;margin:0 auto}
+#lock{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+#lock form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px;width:100%;max-width:380px}
+#lock h1{font-size:20px;margin:0 0 6px}#lock p{color:var(--mute);margin:0 0 16px;font-size:14px}
+input{width:100%;padding:13px 14px;font-size:17px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+input:focus{outline:2px solid var(--acc);border-color:transparent}
+button.go{margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:16px;cursor:pointer}
+#err{color:#dc2626;font-size:14px;margin-top:10px;min-height:20px}
+#app{display:none}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:16px 16px 10px;border-bottom:1px solid var(--line)}
+header h1{font-size:20px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center}
+#out-btn{font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}
+.meta{color:var(--mute);font-size:13px;margin-top:8px}
+main{padding:16px}
+.person{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+.person h2{font-size:17px;margin:0 0 2px}.num{color:var(--mute);font-variant-numeric:tabular-nums;font-size:14px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.grid figure{margin:0;cursor:zoom-in}.grid img{width:100%;height:220px;object-fit:contain;background:#00000010;border-radius:8px;border:1px solid var(--line)}
+figcaption{font-size:12px;color:var(--mute);margin-top:3px}
+.names{display:flex;flex-wrap:wrap;gap:6px}.names button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 11px;font-size:14px;cursor:pointer}
+.names button:hover{border-color:var(--acc);color:var(--acc)}
+#ov{position:fixed;inset:0;background:#000d;display:none;align-items:center;justify-content:center;z-index:10;padding:12px}
+#ov img{max-width:100%;max-height:100%;object-fit:contain}#ov.on{display:flex}
+.empty{color:var(--mute);padding:30px 0;text-align:center}
+</style></head><body>
+<div id="lock"><form id="f"><h1>🔒 Card Finder</h1><p>Enter the password to unlock.</p>
+<input id="pw" type="password" autocomplete="current-password" placeholder="Password" autofocus>
+<button class="go" type="submit">Unlock</button><div id="err"></div></form></div>
+<div id="app"><header><div class="wrap"><h1>Aadhaar Card Finder <button id="out-btn">Lock</button></h1>
+<input id="q" type="search" placeholder="Type a name or Aadhaar number…" autocomplete="off">
+<div class="meta" id="meta"></div></div></header>
+<main><div class="wrap" id="out"></div></main></div>
+<div id="ov"><img id="big" alt=""></div>
+<script>
+const $=id=>document.getElementById(id);let KEY=null,R=[],P=[];const cache={};
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function derive(pw){const k=await (await fetch('d/k.json',{cache:'no-store'})).json();
+ const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+ return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(k.salt),iterations:k.it,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt'])}
+async function dec(path){const b=new Uint8Array(await (await fetch(path)).arrayBuffer());
+ return crypto.subtle.decrypt({name:'AES-GCM',iv:b.slice(0,12)},KEY,b.slice(12))}
+async function unlock(pw){$('err').textContent='Unlocking…';
+ try{KEY=await derive(pw);R=JSON.parse(new TextDecoder().decode(await dec('d/i.bin')))}catch(e){KEY=null;$('err').textContent='Wrong password.';return false}
+ try{sessionStorage.setItem('cfp',pw)}catch(e){}
+ const people={};R.forEach(r=>{const k=r.n.toLowerCase();(people[k]=people[k]||{n:r.n,a:'',items:[]}).items.push(r);if(r.a)people[k].a=r.a});
+ P=Object.values(people).sort((a,b)=>a.n.localeCompare(b.n));
+ $('lock').style.display='none';$('app').style.display='block';$('err').textContent='';render();$('q').focus();return true}
+$('f').addEventListener('submit',e=>{e.preventDefault();unlock($('pw').value)});
+$('out-btn').addEventListener('click',()=>{try{sessionStorage.removeItem('cfp')}catch(e){};location.reload()});
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=a=>a?a.replace(/(\d{4})(\d{4})(\d{4})/,'$1 $2 $3'):'number not read';
+async function img(p){const id=String(p).padStart(2,'0');if(!cache[id])cache[id]=dec('d/'+id+'.bin').then(b=>URL.createObjectURL(new Blob([b],{type:'image/jpeg'})));return cache[id]}
+function render(){const q=$('q').value.trim().toLowerCase(),dg=q.replace(/\s/g,''),out=$('out'),meta=$('meta');
+ if(!q){meta.textContent=P.length+' people · '+R.length+' card images. Tap a name or start typing.';
+  out.innerHTML='<div class="names">'+P.map(p=>'<button data-n="'+esc(p.n)+'">'+esc(p.n)+'</button>').join('')+'</div>';return}
+ const w=q.split(/\s+/);const hits=P.filter(p=>{const n=p.n.toLowerCase();return w.every(x=>n.includes(x))||(/^\d{3,}$/.test(dg)&&p.a.includes(dg))});
+ meta.textContent=hits.length?hits.length+' match'+(hits.length>1?'es':''):'';
+ out.innerHTML=hits.length?hits.map(p=>'<section class="person"><h2>'+esc(p.n)+'</h2><div class="num">Aadhaar: '+fmt(p.a)+'</div><div class="grid">'+
+  p.items.map(r=>'<figure><img data-p="'+r.p+'" alt="'+esc(p.n)+'"><figcaption>'+(r.note==='back'?'Back side':esc(r.note||'Front / full card'))+'</figcaption></figure>').join('')+'</div></section>').join('')
+  :'<div class="empty">No card found for “'+esc($('q').value)+'”.</div>';
+ out.querySelectorAll('img[data-p]').forEach(async i=>{i.src=await img(+i.dataset.p)})}
+$('q').addEventListener('input',render);
+$('out').addEventListener('click',e=>{const b=e.target.closest('button[data-n]');if(b){$('q').value=b.dataset.n;render();scrollTo(0,0);return}
+ const i=e.target.closest('figure img');if(i&&i.src){$('big').src=i.src;$('ov').classList.add('on')}});
+$('ov').addEventListener('click',()=>$('ov').classList.remove('on'));
+try{const s=sessionStorage.getItem('cfp');if(s)unlock(s)}catch(e){}
+</script></body></html>
